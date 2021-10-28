@@ -21,14 +21,27 @@ pub struct Recipe {
     /// - JobQueue: The running job queue to mark deps and output files.
     ///
     /// If this function returns `Err(..)`, the whole build process is stopped
-    pub f: &'static dyn Fn(&PathBuf, &mut JobQueue) -> std::io::Result<()>,
+    pub run: &'static dyn Fn(&PathBuf, &mut JobQueue) -> std::io::Result<()>,
+    /// Function (File, JobQueue) -> Result<()>
+    /// - File: The file to be built
+    /// - JobQueue: The running job queue to mark deps and output files.
+    ///
+    /// If the function returns false, the recipe is not scheduled to be executed
+    pub needs_to_run: &'static dyn Fn(&PathBuf, &mut JobQueue) -> bool,
+}
+
+fn recipes(options: &Options) -> HashMap<String, Recipe> {
+    let mut map = HashMap::new();
+    crate::latex::recipes(options, &mut map);
+    crate::sage::recipes(options, &mut map);
+    map
 }
 
 pub fn run(options: Options) -> std::io::Result<()> {
     let mut queue = JobQueue {
         jobs: LinkedList::new(),
         files: HashSet::new(),
-        recipes: HashMap::new(),
+        recipes: recipes(&options),
         texfile: PathBuf::from_str(".").unwrap(),
         rerun_current_job: false,
     };
@@ -122,7 +135,7 @@ pub struct Job {
 impl Job {
     fn execute(self, queue: &mut JobQueue) -> std::io::Result<()> {
         queue.rerun_current_job = false;
-        let _ = (self.recipe.f)(&self.on, queue)?;
+        let _ = (self.recipe.run)(&self.on, queue)?;
         if queue.rerun_current_job {
             queue.register_job(self);
         }

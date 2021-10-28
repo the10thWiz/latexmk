@@ -103,5 +103,6 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    recipe::run_cmds(options)
+    //recipe::run_cmds(options)
+    job::run(options)
 }

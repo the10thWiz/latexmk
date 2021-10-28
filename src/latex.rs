@@ -12,7 +12,7 @@ use crate::{
     Options,
 };
 
-pub fn make_cmds(options: &Options, map: &mut HashMap<String, Recipe>) {
+pub fn make_cmds(_options: &Options, map: &mut HashMap<String, Recipe>) {
     // pdflatex
     map.insert(
         "pdf".into(),
@@ -46,7 +46,7 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, crate::job::Recipe>
         "pdf".into(),
         crate::job::Recipe {
             uses: "tex",
-            f: &|file, queue| {
+            run: &|file, queue| {
                 println!("Running pdflatex on {}", file.display());
                 let cmd = Command::new("pdflatex")
                     .arg("-recorder")
@@ -69,13 +69,14 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, crate::job::Recipe>
                     Err(file_error("Sage error"))
                 }
             },
+            needs_to_run: &|_, _| true,
         },
     );
     map.insert(
         "dvi".into(),
         crate::job::Recipe {
             uses: "tex",
-            f: &|file, queue| {
+            run: &|file, queue| {
                 println!("Running dvilualatex on {}", file.display());
                 let cmd = Command::new("dvilualatex")
                     .arg("--recorder")
@@ -99,6 +100,7 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, crate::job::Recipe>
                     Err(file_error("Sage error"))
                 }
             },
+            needs_to_run: &|_, _| true,
         },
     );
 }

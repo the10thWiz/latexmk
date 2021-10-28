@@ -32,7 +32,7 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, crate::job::Recipe>
         "sagetex.sout".into(),
         crate::job::Recipe {
             uses: "sagetex.sage",
-            f: &|file, queue| {
+            run: &|file, queue| {
                 println!("Running Sage on {}", file.display());
                 let cmd = Command::new("sage")
                     .arg(replace_file_ext(file, "sagetex.sout", "sagetex.sage"))
@@ -52,6 +52,7 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, crate::job::Recipe>
                     Err(file_error("Sage error"))
                 }
             },
+            needs_to_run: &|_, _| true,
         },
     );
 }
