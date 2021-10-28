@@ -74,6 +74,7 @@ impl JobQueue {
         for (ext, recipe) in self.recipes.iter() {
             if name.ends_with(ext) {
                 let recipe = recipe.clone();
+                println!("Adding {}", file.display());
                 if (recipe.needs_to_run)(&file, self) {
                     self.jobs.push_back(Job { recipe, on: file });
                     self.rerun_current_job = true;

@@ -84,7 +84,7 @@ fn run_latex(file: &PathBuf, queue: &mut JobQueue, cmd: Output) -> std::io::Resu
     } else {
         std::io::stdout().write_all(stdout.as_bytes())?;
         std::io::stdout().write_all(&cmd.stderr)?;
-        Err(file_error("Sage error"))
+        Err(file_error("Latex error"))
     }
 }
 

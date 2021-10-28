@@ -68,7 +68,7 @@ fn sage_digest(file: impl AsRef<Path>) -> std::io::Result<String> {
             hash.consume(line.as_bytes());
         }
     }
-    Ok(format!("%{:x}% md5sum", hash.compute()))
+    Ok(dbg!(format!("%{:x}% md5sum", hash.compute())))
 }
 
 /// Checks if file contains the digest, and returns false if such a line is found
