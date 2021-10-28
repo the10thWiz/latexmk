@@ -1,41 +1,20 @@
-use std::{
-    collections::{HashMap, HashSet, LinkedList},
-    path::{Path, PathBuf},
-    str::FromStr,
-};
-
-use crate::{util::replace_file_ext, Options};
-
 //
 // job.rs
 // Copyright (C) 2021 matthew <matthew@WINDOWS-05HIC4F>
 // Distributed under terms of the MIT license.
 //
 
-#[derive(Clone)]
-pub struct Recipe {
-    /// The input file extension
-    pub uses: &'static str,
-    /// Function (File, JobQueue) -> Result<()>
-    /// - File: The file to be built
-    /// - JobQueue: The running job queue to mark deps and output files.
-    ///
-    /// If this function returns `Err(..)`, the whole build process is stopped
-    pub run: &'static dyn Fn(&PathBuf, &mut JobQueue) -> std::io::Result<()>,
-    /// Function (File, JobQueue) -> Result<()>
-    /// - File: The file to be built
-    /// - JobQueue: The running job queue to mark deps and output files.
-    ///
-    /// If the function returns false, the recipe is not scheduled to be executed
-    pub needs_to_run: &'static dyn Fn(&PathBuf, &mut JobQueue) -> bool,
-}
+use std::{
+    collections::{HashMap, HashSet, LinkedList},
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
-fn recipes(options: &Options) -> HashMap<String, Recipe> {
-    let mut map = HashMap::new();
-    crate::latex::recipes(options, &mut map);
-    crate::sage::recipes(options, &mut map);
-    map
-}
+use crate::{
+    recipe::{recipes, Recipe},
+    util::replace_file_ext,
+    Options,
+};
 
 pub fn run(options: Options) -> std::io::Result<()> {
     let mut queue = JobQueue {
@@ -64,6 +43,9 @@ pub struct JobQueue {
 
 impl JobQueue {
     fn execute(&mut self) -> std::io::Result<()> {
+        if let Some(job) = self.jobs.pop_front() {
+            let _ = job.execute(self);
+        }
         while let Some(job) = self.jobs.pop_front() {
             job.execute(self)?;
         }
@@ -91,11 +73,11 @@ impl JobQueue {
         let name = file.file_name().map_or("", |f| f.to_str().unwrap_or(""));
         for (ext, recipe) in self.recipes.iter() {
             if name.ends_with(ext) {
-                self.jobs.push_back(Job {
-                    recipe: recipe.clone(),
-                    on: file,
-                });
-                self.rerun_current_job = true;
+                let recipe = recipe.clone();
+                if (recipe.needs_to_run)(&file, self) {
+                    self.jobs.push_back(Job { recipe, on: file });
+                    self.rerun_current_job = true;
+                }
                 break;
             }
         }
@@ -135,10 +117,10 @@ pub struct Job {
 impl Job {
     fn execute(self, queue: &mut JobQueue) -> std::io::Result<()> {
         queue.rerun_current_job = false;
-        let _ = (self.recipe.run)(&self.on, queue)?;
+        let res = (self.recipe.run)(&self.on, queue);
         if queue.rerun_current_job {
             queue.register_job(self);
         }
-        Ok(())
+        res
     }
 }

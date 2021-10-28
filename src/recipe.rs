@@ -14,8 +14,34 @@ use std::{
     str::FromStr,
 };
 
-use crate::{latex, sage, Options};
+use crate::{job::JobQueue, latex, sage, Options};
 
+#[derive(Clone)]
+pub struct Recipe {
+    /// The input file extension
+    pub uses: &'static str,
+    /// Function (File, JobQueue) -> Result<()>
+    /// - File: The file to be built
+    /// - JobQueue: The running job queue to mark deps and output files.
+    ///
+    /// If this function returns `Err(..)`, the whole build process is stopped
+    pub run: &'static dyn Fn(&PathBuf, &mut JobQueue) -> std::io::Result<()>,
+    /// Function (File, JobQueue) -> Result<()>
+    /// - File: The file to be built
+    /// - JobQueue: The running job queue to mark deps and output files.
+    ///
+    /// If the function returns false, the recipe is not scheduled to be executed
+    pub needs_to_run: &'static dyn Fn(&PathBuf, &mut JobQueue) -> bool,
+}
+
+pub fn recipes(options: &Options) -> HashMap<String, Recipe> {
+    let mut map = HashMap::new();
+    latex::recipes(options, &mut map);
+    sage::recipes(options, &mut map);
+    map
+}
+
+/*
 fn make_cmds(options: &Options) -> HashMap<String, Recipe> {
     let mut map = HashMap::new();
     latex::make_cmds(options, &mut map);
@@ -25,7 +51,6 @@ fn make_cmds(options: &Options) -> HashMap<String, Recipe> {
         "bbl".into(),
         Recipe {
             uses: "aux",
-            f: &|_, _, _| Ok(()),
             extras: &["bib"],
             generated: &["blg"],
             generated_dirs: &[],
@@ -35,48 +60,6 @@ fn make_cmds(options: &Options) -> HashMap<String, Recipe> {
     // use make
     map
 }
-
-/// Dependencies
-#[derive(Debug, Default)]
-pub struct Deps {
-    /// Files that are read from
-    input: HashSet<PathBuf>,
-    /// Files that are output to
-    output: HashSet<PathBuf>,
-    /// Files reported as missing
-    missing: HashSet<String>,
-}
-
-impl Deps {
-    /// Clear the input and missing file lists
-    fn clear(&mut self) {
-        self.input.clear();
-        self.missing.clear();
-    }
-}
-
-/// Recipe struct
-pub struct Recipe {
-    /// The input file extension
-    pub uses: &'static str,
-    /// Function
-    pub f: &'static dyn Fn(&PathBuf, &str, &mut Deps) -> std::io::Result<()>,
-    /// Extra files used when running - Used when determining the file modification times
-    pub extras: &'static [&'static str],
-    /// Extra files generated - Used when determining the files to remove for clean operations
-    pub generated: &'static [&'static str],
-    /// Extra directories generated - Used when determining the files to remove for clean operations
-    pub generated_dirs: &'static [&'static str],
-    /// Command line string
-    ///
-    /// # Replacements
-    /// - `%O`: The output file name
-    /// - `%I`: The input file name
-    /// - `%N`: The filename without an extension
-    /// - `%%`: A literal percent
-    pub script: Cow<'static, str>,
-}
-
 /// Calculates the parent of a given path
 fn with_parent<W>(path: &Path, f: impl FnOnce(&Path) -> W) -> W {
     if let Some(p) = path.parent() {
@@ -192,25 +175,22 @@ impl Recipe {
 }
 
 /// Find `No file ` notes in output
-fn find(s: &str) -> HashSet<String> {
-    let mut ret = HashSet::new();
-    let mut cur = s;
-    while cur.len() > 0 {
-        if let Some((_pre, rest)) = cur.split_once("No file ") {
-            let filename = rest.split_once('\n').map_or(rest, |(r, _)| r);
-            ret.insert(filename[..filename.len() - 1].into());
-            cur = &rest[1..];
-        } else {
-            break;
-        }
-    }
-    ret
-}
 
 /// Run commands to build recipe library, and run recipes as needed
 pub fn run_cmds(mut options: Options) -> std::io::Result<()> {
     //eprintln!("{:?}", options);
     let base = if options.dvi { "dvi" } else { "pdf" };
+
+    // Insert all files that end with .tex in the current directory if no files were specified
+    if options.files.len() == 0 {
+        let f = PathBuf::from_str(".").unwrap();
+        for file in f.read_dir()? {
+            let file = file?;
+            if file.file_name().to_str().unwrap().ends_with(".tex") {
+                options.files.push(file.path());
+            }
+        }
+    }
 
     let recipes = make_cmds(&options);
     let mut deps = Deps::default();
@@ -263,61 +243,4 @@ pub fn run_cmds(mut options: Options) -> std::io::Result<()> {
     }
     Ok(())
 }
-
-fn file_error(e: &'static str) -> Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-}
-
-fn collect_files(name: &str, deps: &mut Deps) -> std::io::Result<()> {
-    let mut r = File::open(format!("./{}.fls", name))?;
-    let mut s = String::new();
-    r.read_to_string(&mut s)?;
-    let mut pwd = PathBuf::from_str(".").unwrap();
-    for line in s.split('\n').filter(|s| s.trim() != "") {
-        let (cmd, file) = line
-            .trim()
-            .split_once(' ')
-            .ok_or(file_error("no space found"))?;
-        let mut path = PathBuf::from_str(file).map_err(|_| file_error("not a valid path"))?;
-        // make absolute if possible
-        if !path.is_absolute() {
-            path = pwd.join(path);
-        }
-        // Handle various possiblilities
-        if cmd == "PWD" {
-            pwd = path;
-        } else if cmd == "INPUT" {
-            deps.input.insert(path);
-        } else if cmd == "OUTPUT" {
-            deps.output.insert(path);
-        } else {
-            panic!("Unexpected line: {}", cmd);
-        }
-    }
-    Ok(())
-}
-
-fn build(
-    dep: &PathBuf,
-    output: &mut HashSet<PathBuf>,
-    recipes: &HashMap<String, Recipe>,
-) -> std::io::Result<bool> {
-    let name = dep.file_name().map_or("", |o| o.to_str().unwrap_or(""));
-    //println!("Building {}", name);
-    for (makes, recipe) in recipes.iter() {
-        if name.ends_with(makes) {
-            output.insert(dep.clone());
-            let output = recipe.on_file(dep, makes, output)?;
-            if output.status.success() {
-                println!("Built {}", name);
-                return Ok(true);
-            } else {
-                println!("Failed to build {}", name);
-                std::io::stdout().write_all(&output.stdout)?;
-                std::io::stdout().write_all(&output.stderr)?;
-                return Ok(false);
-            }
-        }
-    }
-    Ok(false)
-}
+ * */
