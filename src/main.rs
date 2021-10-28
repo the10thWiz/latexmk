@@ -8,7 +8,7 @@
 //! + Clean operation
 //! - Log files allowing clean to avoid running all files, and potentially faster opteration?
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 //use structopt::{clap::Shell, StructOpt};
 use clap::{Clap, IntoApp};
@@ -17,9 +17,11 @@ use clap_generate::{
     Shell,
 };
 
+mod job;
 mod latex;
 mod recipe;
 mod sage;
+mod util;
 
 /// Command line tool to automatically build latex documents
 #[derive(Debug, Clap)]
@@ -47,7 +49,7 @@ pub struct Options {
 }
 
 fn main() -> std::io::Result<()> {
-    let options = Options::parse();
+    let mut options = Options::parse();
     if let Some(shell) = options.shell_completion {
         match shell {
             Shell::Bash => clap_generate::generate::<Bash, _>(
@@ -89,5 +91,17 @@ fn main() -> std::io::Result<()> {
         }
         return Ok(());
     }
+
+    // Insert all files that end with .tex in the current directory if no files were specified
+    if options.files.len() == 0 {
+        let f = PathBuf::from_str(".").unwrap();
+        for file in f.read_dir()? {
+            let file = file?;
+            if file.file_name().to_str().unwrap().ends_with(".tex") {
+                options.files.push(file.path());
+            }
+        }
+    }
+
     recipe::run_cmds(options)
 }

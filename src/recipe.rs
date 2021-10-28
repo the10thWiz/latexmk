@@ -6,7 +6,7 @@
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, LinkedList},
     fs::File,
     io::{Error, Read, Write},
     path::{Path, PathBuf},
@@ -25,6 +25,7 @@ fn make_cmds(options: &Options) -> HashMap<String, Recipe> {
         "bbl".into(),
         Recipe {
             uses: "aux",
+            f: &|_, _, _| Ok(()),
             extras: &["bib"],
             generated: &["blg"],
             generated_dirs: &[],
@@ -58,6 +59,8 @@ impl Deps {
 pub struct Recipe {
     /// The input file extension
     pub uses: &'static str,
+    /// Function
+    pub f: &'static dyn Fn(&PathBuf, &str, &mut Deps) -> std::io::Result<()>,
     /// Extra files used when running - Used when determining the file modification times
     pub extras: &'static [&'static str],
     /// Extra files generated - Used when determining the files to remove for clean operations
@@ -208,17 +211,6 @@ fn find(s: &str) -> HashSet<String> {
 pub fn run_cmds(mut options: Options) -> std::io::Result<()> {
     //eprintln!("{:?}", options);
     let base = if options.dvi { "dvi" } else { "pdf" };
-
-    // Insert all files that end with .tex in the current directory if no files were specified
-    if options.files.len() == 0 {
-        let f = PathBuf::from_str(".").unwrap();
-        for file in f.read_dir()? {
-            let file = file?;
-            if file.file_name().to_str().unwrap().ends_with(".tex") {
-                options.files.push(file.path());
-            }
-        }
-    }
 
     let recipes = make_cmds(&options);
     let mut deps = Deps::default();
