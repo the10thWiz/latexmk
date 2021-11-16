@@ -63,12 +63,13 @@ fn sage_digest(file: impl AsRef<Path>) -> std::io::Result<String> {
         let trimmed = line.trim();
         if !trimmed.starts_with("_st_.goboom")
             && !trimmed.starts_with("print('SageT")
-            && !trimmed.starts_with(" ?_st_.current_tex_line")
+            && !trimmed.starts_with("_st_.current_tex_line")
         {
             hash.consume(line.as_bytes());
+            hash.consume(b"\n");
         }
     }
-    Ok(dbg!(format!("%{:x}% md5sum", hash.compute())))
+    Ok(format!("%{:x}% md5sum", hash.compute()))
 }
 
 /// Checks if file contains the digest, and returns false if such a line is found
