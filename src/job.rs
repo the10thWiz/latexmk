@@ -23,12 +23,30 @@ pub fn run(options: Options) -> std::io::Result<()> {
         recipes: recipes(&options),
         texfile: PathBuf::from_str(".").unwrap(),
         rerun_current_job: false,
+        original_dir: options.original_dir,
     };
     let output_ext = if options.dvi { "dvi" } else { "pdf" };
 
-    for file in options.files {
-        queue.insert(replace_file_ext(&file, "tex", output_ext), file);
-        queue.execute()?;
+    for file in options.files.iter() {
+        queue.insert(replace_file_ext(&file, "tex", output_ext), file.clone());
+        if let Err(_) = queue.execute() {
+            println!("Failed to build {}", file.display());
+        }
+    }
+
+    if options.clean {
+        for file in queue.files {
+            // Don't remove final output files
+            if file
+                .file_name()
+                .map_or(true, |f| !f.to_string_lossy().ends_with(output_ext))
+            {
+                println!("rm {}", file.display());
+                if let Err(_) = std::fs::remove_file(&file) {
+                    let _ = std::fs::remove_dir_all(&file);
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -39,6 +57,7 @@ pub struct JobQueue {
     recipes: HashMap<String, Recipe>,
     texfile: PathBuf,
     rerun_current_job: bool,
+    original_dir: Option<PathBuf>,
 }
 
 impl JobQueue {
@@ -58,6 +77,11 @@ impl JobQueue {
     /// can be added reguardless of whether the file was actually generated
     pub fn output(&mut self, file: PathBuf) {
         self.files.insert(file);
+    }
+
+    /// Return the original directory, if it is different from `.`
+    pub fn get_current_dir(&self) -> &Option<PathBuf> {
+        &self.original_dir
     }
 
     pub fn tex_file(&self) -> &Path {

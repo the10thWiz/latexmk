@@ -23,19 +23,12 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, Recipe>) {
         "sagetex.sout".into(),
         Recipe {
             uses: "sagetex.sage",
-            run: &|file, queue| {
+            run: &|file, _queue| {
                 println!("Running Sage on {}", file.display());
                 let cmd = Command::new("sage")
                     .arg(replace_file_ext(file, "sagetex.sout", "sagetex.sage"))
                     .output()?;
                 if cmd.status.success() {
-                    queue.output(file.clone());
-                    queue.output(replace_file_ext(file, "sagetex.sout", "sagetex.sage.py"));
-                    queue.output(replace_file_ext(file, "sagetex.sout", "sagetex.scmd"));
-                    queue.output(queue.tex_file().with_file_name(format!(
-                        "sage-plots-for-{}",
-                        queue.tex_file().file_name().map_or("", |f| f.to_str().unwrap_or(""))
-                    )));
                     Ok(())
                 } else {
                     std::io::stdout().write_all(&cmd.stdout)?;
@@ -43,7 +36,15 @@ pub fn recipes(_options: &Options, map: &mut HashMap<String, Recipe>) {
                     Err(file_error("Sage error"))
                 }
             },
-            needs_to_run: &|file, _queue| {
+            needs_to_run: &|file, queue| {
+                // Mark output files, since this is guarnteed to be run, unlike the run fn
+                queue.output(file.clone());
+                queue.output(replace_file_ext(file, "sagetex.sout", "sagetex.sage.py"));
+                queue.output(replace_file_ext(file, "sagetex.sout", "sagetex.scmd"));
+                queue.output(queue.tex_file().with_file_name(format!(
+                        "sage-plots-for-{}",
+                        queue.tex_file().file_name().map_or("", |f| f.to_str().unwrap_or(""))
+                    )));
                 let sage = replace_file_ext(file, "sagetex.sout", "sagetex.sage");
                 match sage_digest(sage).map(|d| sage_digest_check(file, d)) {
                     Ok(Ok(val)) => val,
