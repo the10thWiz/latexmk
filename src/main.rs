@@ -46,9 +46,6 @@ pub struct Options {
     /// Note that this overrides any other settings specified
     #[clap(long)]
     shell_completion: Option<Shell>,
-
-    #[clap(skip)]
-    original_dir: Option<PathBuf>,
 }
 
 fn main() -> std::io::Result<()> {
@@ -104,23 +101,6 @@ fn main() -> std::io::Result<()> {
                 options.files.push(file.path());
             }
         }
-    }
-
-    let _ = std::fs::create_dir_all(&options.output_dir);
-    options.output_dir =
-        std::fs::canonicalize(options.output_dir).expect("Output directory invalid");
-    if options.output_dir != std::fs::canonicalize(PathBuf::from_str(".").unwrap()).unwrap() {
-        for file in options.files.iter_mut() {
-            if let Ok(f) = std::fs::canonicalize(&file) {
-                *file = f;
-            }
-            let new_name = options.output_dir.join(file.file_name().unwrap());
-            let _ = std::fs::remove_file(&new_name);
-            std::fs::hard_link(&file, &new_name)?;
-            *file = new_name;
-        }
-        options.original_dir = Some(std::env::current_dir().unwrap());
-        std::env::set_current_dir(&options.output_dir)?;
     }
 
     job::run(options)

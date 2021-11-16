@@ -23,7 +23,6 @@ pub fn run(options: Options) -> std::io::Result<()> {
         recipes: recipes(&options),
         texfile: PathBuf::from_str(".").unwrap(),
         rerun_current_job: false,
-        original_dir: options.original_dir,
     };
     let output_ext = if options.dvi { "dvi" } else { "pdf" };
 
@@ -57,7 +56,6 @@ pub struct JobQueue {
     recipes: HashMap<String, Recipe>,
     texfile: PathBuf,
     rerun_current_job: bool,
-    original_dir: Option<PathBuf>,
 }
 
 impl JobQueue {
@@ -77,11 +75,6 @@ impl JobQueue {
     /// can be added reguardless of whether the file was actually generated
     pub fn output(&mut self, file: PathBuf) {
         self.files.insert(file);
-    }
-
-    /// Return the original directory, if it is different from `.`
-    pub fn get_current_dir(&self) -> &Option<PathBuf> {
-        &self.original_dir
     }
 
     pub fn tex_file(&self) -> &Path {
