@@ -70,16 +70,21 @@ impl JobQueue {
     /// is a seperate reason to rerun the job. The rerun flag is ONLY set if the requested file
     /// is actually built.
     pub fn needs(&mut self, file: PathBuf) {
-        let name = file.file_name().map_or("", |f| f.to_str().unwrap_or(""));
-        for (ext, recipe) in self.recipes.iter() {
-            if name.ends_with(ext) {
-                let recipe = recipe.clone();
-                println!("Adding {}", file.display());
-                if (recipe.needs_to_run)(&file, self) {
-                    self.jobs.push_back(Job { recipe, on: file });
-                    self.rerun_current_job = true;
+        // If a job for `file` is already registered to be run, don't bother registering it
+        // Note that this only checks jobs that haven't been executed yet, however this is
+        // preferable
+        if !self.jobs.iter().any(|j| j.on == file) {
+            let name = file.file_name().map_or("", |f| f.to_str().unwrap_or(""));
+            for (ext, recipe) in self.recipes.iter() {
+                if name.ends_with(ext) {
+                    let recipe = recipe.clone();
+                    println!("Adding {}", file.display());
+                    if (recipe.needs_to_run)(&file, self) {
+                        self.jobs.push_back(Job { recipe, on: file });
+                        self.rerun_current_job = true;
+                    }
+                    break;
                 }
-                break;
             }
         }
     }
@@ -104,8 +109,17 @@ impl JobQueue {
         self.rerun_current_job = true;
     }
 
+    /// Register Job to be executed
+    ///
+    /// Note that this does not register a job if a job to build the same file has already been
+    /// registered, but not run.
     fn register_job(&mut self, job: Job) {
-        self.jobs.push_back(job);
+        // Don't register jobs if they are already registered
+        // Note that this doesn't prevent reregistration, since when a job is reregisted, it has
+        // already been removed from the queue, and is therefore not in the queue to be checked.
+        if !self.jobs.iter().any(|j| j.on == job.on) {
+            self.jobs.push_back(job);
+        }
     }
 }
 
